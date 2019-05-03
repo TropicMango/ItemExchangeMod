@@ -3,5 +3,7 @@ bin
 .vs
 obj
 ProjectSettings
+Temp
 *.csproj
+*.meta
 buildreleases
