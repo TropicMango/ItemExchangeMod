@@ -66,6 +66,25 @@ namespace ItemExchange {
                 }
             };
 
+            On.RoR2.PurchaseInteraction.OnInteractionBegin += (orig, self, activator) => {
+                if (!self.CanBeAffordedByInteractor(activator))
+                    return;
+                orig(self, activator);
+
+                var shop = self.GetComponent<ShopTerminalBehavior>();
+
+                var characterBody = activator.GetComponent<CharacterBody>();
+                RoR2.Inventory inventory = characterBody.inventory;
+
+                // If the cost type is an item, give the user the item directly and send the pickup message
+                if (self.costType == CostType.WhiteItem
+                    || self.costType == CostType.GreenItem
+                    || self.costType == CostType.RedItem) {
+                    var item = shop.CurrentPickupIndex().itemIndex;
+                    ResetInv(inventory);
+                }
+            };
+
 
         }
 
@@ -74,6 +93,18 @@ namespace ItemExchange {
                 gobj.SetActive(true);
             } else if (Input.GetKeyUp(KeyCode.Tab)) {
                 gobj.SetActive(false);
+            }
+        }
+
+        private void ResetInv(RoR2.Inventory inv) {
+            InvData.Clear();
+
+            using (List<ItemIndex>.Enumerator enumerator = ((List<ItemIndex>)inv.itemAcquisitionOrder).GetEnumerator()) {
+                while (enumerator.MoveNext()) {
+                    ItemIndex current = enumerator.Current;
+                    ItemData itemCount = new ItemData(inv.GetItemCount(current), current);
+                    InvData.Add(itemCount);
+                }
             }
         }
 
