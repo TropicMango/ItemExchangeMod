@@ -12,7 +12,6 @@ using UnityEngine.Events;
 namespace ItemExchange {
 
     [BepInDependency("com.bepis.r2api")]
-
     [BepInPlugin("com.mango.ItemExchange", "ItemExchange", "1.0.1")]
     
     public class ItemData {
@@ -27,13 +26,17 @@ namespace ItemExchange {
 
     public class ItemExchange : ModBehaviour {
 
-        [SerializeField] private GameObject ExchangeWindow;
+        [SerializeField] public GameObject ExchangeWindow;
         [SerializeField] private GameObject PersonalTile;
 
         private List<ItemData> InvData;
         private List<GameObject> TileList;
-        private GameObject gobj;
-        private ItemIcon latestItem; 
+        private ItemIcon latestItem;
+        private float tile_size;
+        private float team_offset_size;
+        private float vertical_tile_offset;
+        private float horizontal_tile_offset;
+        public List<GameObject> adjust_button;
 
         public override void OnLoaded(ContentHandler contentHandler) {
             Debug.Log("------ Item Exchange Initiated ------");
@@ -42,81 +45,6 @@ namespace ItemExchange {
             TileList = new List<GameObject>();
             InitUI();            
 
-            /*On.RoR2.Inventory.GiveItem += (orig, self, item_index, count) => {
-                Chat.AddMessage($"{LocalUserManager.GetFirstLocalUser().userProfile.name} has noticed {item_index} being given");
-                orig(self, item_index, count);
-
-                if (!body.isLocalPlayer)
-                    return;
-
-                var item = item_index;
-
-                int ItemDataIndex = InvData.FindIndex(x => x.item_index == item);
-                Debug.Log($"index: {ItemDataIndex}");
-                if (ItemDataIndex != -1) {
-                    InvData[ItemDataIndex].count += 1;
-                } else {
-                    GameObject TileSetup = Instantiate(PersonalTile, gobj.transform);
-                    TileSetup.GetComponent<RectTransform>().anchoredPosition = new Vector2(-608f + 47.25f * (TileList.Count), 329);
-                    int TilePos = TileList.Count;
-                    Debug.Log($"position: {TilePos}");
-                    TileSetup.GetComponent<Button>().onClick.AddListener(() => RegisterOffer(TilePos));
-
-                    // Chat.AddMessage($"current list size: {TileList.Count}");
-
-                    InvData.Add(new ItemData(1, item));
-                    TileList.Add(TileSetup);
-                }
-            };*/
-
-            /*On.RoR2.GenericPickupController.GrantItem += (orig, self, body, inventory) => {
-                orig(self, body, inventory);
-                if (!body.isLocalPlayer)
-                    return;
-
-                var item = self.pickupIndex.itemIndex;
-
-                Chat.AddMessage($"{LocalUserManager.GetFirstLocalUser()} has noticed {item} dropping");
-
-                int ItemDataIndex = InvData.FindIndex(x => x.item_index == item);
-                Debug.Log($"index: {ItemDataIndex}");
-                if (ItemDataIndex != -1) {
-                    InvData[ItemDataIndex].count += 1;
-                } else {
-                    GameObject TileSetup = Instantiate(PersonalTile, gobj.transform);
-                    TileSetup.GetComponent<RectTransform>().anchoredPosition = new Vector2(-608f + 47.25f * (TileList.Count), 329);
-                    int TilePos = TileList.Count;
-                    Debug.Log($"position: {TilePos}");
-                    TileSetup.GetComponent<Button>().onClick.AddListener(() => RegisterOffer(TilePos));
-
-                    // Chat.AddMessage($"current list size: {TileList.Count}");
-
-                    InvData.Add(new ItemData(1, item));
-                    TileList.Add(TileSetup);
-                }
-            };*/
-
-            /*On.RoR2.PurchaseInteraction.OnInteractionBegin += (orig, self, activator) => {
-                orig(self, activator);
-                if (!self.CanBeAffordedByInteractor(activator))
-                    return;
-                var characterBody = activator.GetComponent<CharacterBody>();
-                if (!activator.isLocalPlayer)
-                    return;
-
-                var shop = self.GetComponent<ShopTerminalBehavior>();
-
-                
-                RoR2.Inventory inventory = characterBody.inventory;
-
-                // If the cost type is an item, give the user the item directly and send the pickup message
-                if (self.costType == CostType.WhiteItem
-                    || self.costType == CostType.GreenItem
-                    || self.costType == CostType.RedItem) {
-                    var item = shop.CurrentPickupIndex().itemIndex;
-                    ResetInv(inventory);
-                }
-            };*/
         }
 
         public void Update() {
@@ -124,80 +52,117 @@ namespace ItemExchange {
                 try {
                     ResetInv();
                 } catch {
-
+                    Debug.Log("no inv");
                 }
-                gobj.SetActive(true);
+                ExchangeWindow.SetActive(true);
             } else if (Input.GetKeyUp(KeyCode.Tab)) {
-                gobj.SetActive(false);
+                ExchangeWindow.SetActive(false);
             }
         }
 
         private void ResetInv(RoR2.Inventory inv = null) {
 
-            if(inv == null)
-                inv = LocalUserManager.GetFirstLocalUser().cachedBody.inventory;
+            
 
             foreach(GameObject go in TileList) {
                 Destroy(go);
             }
             InvData.Clear();
             TileList.Clear();
+            int team_player = 0;
+            int current_player_items = 0;
+            foreach (var player in PlayerCharacterMasterController.instances) {
+                inv = player.master.GetBody().inventory;
+                using (List<ItemIndex>.Enumerator enumerator = ((List<ItemIndex>)inv.itemAcquisitionOrder).GetEnumerator()) {
+                    while (enumerator.MoveNext()) {
+                        ItemIndex current = enumerator.Current;
+                        ItemData itemdata = new ItemData(inv.GetItemCount(current), current);
 
-            using (List<ItemIndex>.Enumerator enumerator = ((List<ItemIndex>)inv.itemAcquisitionOrder).GetEnumerator()) {
-                while (enumerator.MoveNext()) {
-                    ItemIndex current = enumerator.Current;
-                    ItemData itemCount = new ItemData(inv.GetItemCount(current), current);
+                        GameObject TileSetup = Instantiate(PersonalTile, ExchangeWindow.transform);
+                        TileSetup.GetComponent<RectTransform>().anchoredPosition = new Vector2(tile_size * (current_player_items) + horizontal_tile_offset, vertical_tile_offset - team_player * team_offset_size);
+                        int TilePos = TileList.Count;
+                        TileSetup.GetComponent<Button>().onClick.AddListener(() => RegisterOffer(TilePos, player.master.GetBody()));
 
-                    GameObject TileSetup = Instantiate(PersonalTile, gobj.transform);
-                    TileSetup.GetComponent<RectTransform>().anchoredPosition = new Vector2(-608f + 47.25f * (TileList.Count), 329);
-                    int TilePos = TileList.Count;
-                    Debug.Log($"position: {TilePos}");
-                    TileSetup.GetComponent<Button>().onClick.AddListener(() => RegisterOffer(TilePos));
-
-                    InvData.Add(itemCount);
-                    TileList.Add(TileSetup);
+                        InvData.Add(itemdata);
+                        TileList.Add(TileSetup);
+                        current_player_items++;
+                    }
                 }
+                team_player++;
+                current_player_items = 0;
             }
         }
 
         public void InitUI() {
             // get reference to game's main canvas
             var canvas = RoR2.RoR2Application.instance.mainCanvas;
+            if (Camera.main.aspect >= 2.0) {
+                tile_size = 35f;
+                team_offset_size = 56.2f;
+                vertical_tile_offset = 140.5f;
+                horizontal_tile_offset = -276.3f;
+            } else if (Camera.main.aspect >= 1.7) {
+                tile_size = 49.75f;
+                team_offset_size = 74.75f;
+                vertical_tile_offset = 187;
+                horizontal_tile_offset = -110f;
+            } else {
+                tile_size = 20;
+                vertical_tile_offset = 329;
+            }
+            adjust_button[0].GetComponent<Button>().onClick.AddListener(() => shift_up());
+            adjust_button[1].GetComponent<Button>().onClick.AddListener(() => shift_down());
+            adjust_button[2].GetComponent<Button>().onClick.AddListener(() => shift_left());
+            adjust_button[3].GetComponent<Button>().onClick.AddListener(() => shift_right());
 
             // instantiate UI prefab
-            gobj = Instantiate(ExchangeWindow);
-            gobj.transform.SetParent(canvas.transform, false);
+            ExchangeWindow.transform.SetParent(canvas.transform, false);
 
             // set the parent to game's canvas and fix the sizings
-            var rect = gobj.GetComponent<RectTransform>();
+            var rect = ExchangeWindow.GetComponent<RectTransform>();
             rect.offsetMin = rect.offsetMax = Vector2.zero;
             rect.anchorMin = new Vector2(0.00f, 0.00f);
             rect.anchorMax = new Vector2(1.00f, 1.00f);
 
-            gobj.SetActive(false);
+            ExchangeWindow.SetActive(false);
         }
 
-        public void RegisterOffer(int ItemListLocation) {
-            LocalUser User = LocalUserManager.GetFirstLocalUser();
+        public void shift_up() {
+            vertical_tile_offset++;
+            Debug.Log(vertical_tile_offset);
+        }
+        public void shift_down() {
+            vertical_tile_offset--;
+            Debug.Log(vertical_tile_offset);
+        }
+        public void shift_left() {
+            tile_size -= 0.5f;
+            Debug.Log(tile_size);
+        }
+        public void shift_right() {
+            tile_size += 0.5f;
+            Debug.Log(tile_size);
+        }
 
-            //Chat.AddMessage($"Item Loc: {ItemListLocation}, Item List: {InvData.Count}, {InvData[ItemListLocation].item_index}");
+        public void RegisterOffer(int ItemListLocation, CharacterBody CB) {
+            // LocalUser User = LocalUserManager.GetFirstLocalUser();
+
+            // Chat.AddMessage($"Item Loc: {ItemListLocation}, Item List: {InvData.Count}, {InvData[ItemListLocation].item_index}");
 
             ItemIndex item = InvData[ItemListLocation].item_index;
 
-            Transform UserTransform = User.cachedBody.transform;
+            Transform UserTransform = CB.transform;
             // Debug.Log(firstLocalUser.userProfile.name);
-            User.cachedBody.inventory.RemoveItem(item, 1);
-            float player_rot = UserTransform.rotation.eulerAngles.y;
+            CB.inventory.RemoveItem(item, 1);
+            float player_rot = 0;
             
             Vector3 mod_rot = new Vector3((float)(Math.Cos(player_rot)) * 10, 20, (float)(Math.Sin(player_rot)) * 10);
 
             PickupDropletController.CreatePickupDroplet(
                 new PickupIndex(item), UserTransform.position, mod_rot);
-            
 
             string color_tag = "#" + ColorCatalog.GetColorHexString(ItemCatalog.GetItemDef(item).colorIndex);
-            Debug.Log(color_tag);
-            Chat.AddMessage($"{User.userProfile.name} has dropped <color={color_tag}> {Language.GetString(ItemCatalog.GetItemDef(item).nameToken)} </color>");
+            Chat.AddMessage($"{CB.name} has dropped <color={color_tag}> {Language.GetString(ItemCatalog.GetItemDef(item).nameToken)} </color>");
 
             InvData[ItemListLocation].count -= 1;
             if(InvData[ItemListLocation].count <= 0) {
